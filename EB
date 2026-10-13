@@ -1,0 +1,177 @@
+
+import discord
+from discord.ext import commands
+import os
+import random
+import requests
+
+intents = discord.Intents.default()
+intents.message_content = True
+
+bot = commands.Bot(command_prefix='$', intents=intents)
+
+datos_ambientales = [
+    "El cambio climatico es una de las mayores amenazas para nuestro planeta.",
+    "La deforestacion contribuye al aumento del dioxido de carbono.",
+    "La contaminacion del aire puede afectar la salud humana.",
+    "Muchas especies estan en peligro debido a la actividad humana.",
+    "Reciclar ayuda a reducir los residuos en el ambiente."
+]
+
+acciones_ambientales = [
+    "Reciclar papel, plastico y vidrio.",
+    "Apagar las luces cuando no sean necesarias.",
+    "Usar transporte publico o bicicleta.",
+    "Plantar arboles y cuidar las areas verdes.",
+    "Reducir el consumo de agua y energia."
+]
+
+
+@bot.event
+async def on_ready():
+    print(f'Bot conectado como {bot.user}')
+
+
+@bot.command()
+async def informacion_ambiental(ctx):
+    info = random.choice(datos_ambientales)
+    await ctx.send(info)
+
+
+@bot.command()
+async def accion_ambiental(ctx):
+    accion = random.choice(acciones_ambientales)
+    await ctx.send(accion)
+
+
+def explicar_pm25(valor):
+    if valor <= 15:
+        return "Nivel relativamente bajo de particulas finas."
+    elif valor <= 35:
+        return "Nivel moderado de particulas finas."
+    return "Nivel elevado de particulas finas."
+
+
+def explicar_pm10(valor):
+    if valor <= 45:
+        return "Nivel relativamente bajo de particulas gruesas."
+    elif valor <= 100:
+        return "Nivel moderado de particulas gruesas."
+    return "Nivel elevado de particulas gruesas."
+
+
+def explicar_ozono(valor):
+    if valor <= 60:
+        return "Concentracion relativamente baja de ozono."
+    elif valor <= 100:
+        return "Concentracion moderada de ozono."
+    return "Concentracion elevada de ozono."
+
+
+@bot.command()
+async def calidad_aire(ctx, *, ciudad: str):
+    await ctx.typing()
+
+    try:
+        datos = get_air_quality(ciudad)
+
+        if datos is None:
+            await ctx.send(
+                f"No encontre datos para {ciudad}. "
+                "Verifica el nombre de la ciudad."
+            )
+            return
+
+        actual = datos.get("current", {})
+        pm25 = actual.get("pm2_5")
+        pm10 = actual.get("pm10")
+        ozone = actual.get("ozone")
+
+        mensaje = f"**Calidad del aire en {ciudad}**\n"
+
+        if pm25 is not None:
+            mensaje += (
+                f"\n**PM2.5: {pm25} µg/m³**\n"
+                "Particulas muy pequenas que pueden penetrar "
+                "profundamente en los pulmones.\n"
+                f"{explicar_pm25(pm25)}\n"
+            )
+
+        if pm10 is not None:
+            mensaje += (
+                f"\n**PM10: {pm10} µg/m³**\n"
+                "Particulas inhalables como polvo y polen.\n"
+                f"{explicar_pm10(pm10)}\n"
+            )
+
+        if ozone is not None:
+            mensaje += (
+                f"\n**Ozono: {ozone} µg/m³**\n"
+                "El ozono a nivel del suelo puede irritar "
+                "las vias respiratorias.\n"
+                f"{explicar_ozono(ozone)}\n"
+            )
+
+        if all(v is None for v in (pm25, pm10, ozone)):
+            await ctx.send(
+                "La API no devolvio mediciones disponibles."
+            )
+            return
+
+        mensaje += (
+            "\n**Nota:** Estas descripciones son orientativas "
+            "y no representan un indice sanitario oficial."
+        )
+
+        await ctx.send(mensaje)
+
+    except requests.RequestException:
+        await ctx.send(
+            "No pude conectar con el servicio de calidad del aire. "
+            "Intenta nuevamente mas tarde."
+        )
+
+
+def get_air_quality(city):
+    geocoding_url = "https://geocoding-api.open-meteo.com/v1/search"
+
+    respuesta_ciudad = requests.get(
+        geocoding_url,
+        params={
+            "name": city,
+            "count": 1,
+            "language": "es",
+            "format": "json"
+        },
+        timeout=10
+    )
+    respuesta_ciudad.raise_for_status()
+
+    resultados = respuesta_ciudad.json().get("results", [])
+
+    if not resultados:
+        return None
+
+    ubicacion = resultados[0]
+
+    air_quality_url = (
+        "https://air-quality-api.open-meteo.com/v1/air-quality"
+    )
+
+    respuesta_aire = requests.get(
+        air_quality_url,
+        params={
+            "latitude": ubicacion["latitude"],
+            "longitude": ubicacion["longitude"],
+            "current": "pm2_5,pm10,ozone"
+        },
+        timeout=10
+    )
+    respuesta_aire.raise_for_status()
+
+    return respuesta_aire.json()
+
+
+
+
+bot.run("MTU0OTU2Mjk2MDQwNDU0NTYzNg.GhN5Lp.YATo_k7MbtYLe6NuiJtDoObnX7AB5ERblGxm78")
